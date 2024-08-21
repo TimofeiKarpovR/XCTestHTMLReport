@@ -18,30 +18,67 @@ public struct Summary {
         case linking
     }
 
-    public init(resultPaths: [String], renderingMode: RenderingMode, downsizeImagesEnabled: Bool, downsizeScaleFactor: CGFloat) {
+    public init(
+        resultPaths: [String], 
+        renderingMode: RenderingMode, 
+        downsizeImagesEnabled: Bool, 
+        downsizeScaleFactor: CGFloat,
+        groupBySimulator: Bool
+    ) {
         var runs: [Run] = []
         var resultFiles: [ResultFile] = []
 
-        for resultPath in resultPaths {
-            Logger.step("Parsing \(resultPath)")
-            let url = URL(fileURLWithPath: resultPath)
-            let resultFile = ResultFile(url: url)
-            resultFiles.append(resultFile)
-            guard let invocationRecord = resultFile.getInvocationRecord() else {
-                Logger.warning("Can't find invocation record for : \(resultPath)")
-                break
+        if groupBySimulator {
+            var deviceRunInfo: [TargetDevice: [(ResultFile, ActionRecord)]] = [:]
+
+            for resultPath in resultPaths {
+                Logger.step("Parsing \(resultPath)")
+                let url = URL(fileURLWithPath: resultPath)
+                let resultFile = ResultFile(url: url)
+                resultFiles.append(resultFile)
+                guard let invocationRecord = resultFile.getInvocationRecord() else {
+                    Logger.warning("Can't find invocation record for : \(resultPath)")
+                    break
+                }
+                invocationRecord.actions.forEach {
+                    let device = TargetDevice(record: $0.runDestination.targetDeviceRecord, eraseDeviceIds: true)
+                    deviceRunInfo[device, default: []].append((resultFile, $0))
+                }
             }
-            let resultRuns = invocationRecord.actions.compactMap {
-                Run(
-                    action: $0,
-                    file: resultFile,
+
+            for device in deviceRunInfo.keys.sorted() {
+                let fileWithActions = deviceRunInfo[device, default: []]
+                let groupedRun = Run(
+                    fileWithActions: fileWithActions,
                     renderingMode: renderingMode,
                     downsizeImagesEnabled: downsizeImagesEnabled,
                     downsizeScaleFactor: downsizeScaleFactor
                 )
+                runs.append(contentsOf: [groupedRun].compactMap { $0 })
             }
-            runs.append(contentsOf: resultRuns)
+        } else {
+            for resultPath in resultPaths {
+                Logger.step("Parsing \(resultPath)")
+                let url = URL(fileURLWithPath: resultPath)
+                let resultFile = ResultFile(url: url)
+                resultFiles.append(resultFile)
+                guard let invocationRecord = resultFile.getInvocationRecord() else {
+                    Logger.warning("Can't find invocation record for : \(resultPath)")
+                    break
+                }
+                let resultRuns = invocationRecord.actions.compactMap {
+                    Run(
+                        action: $0,
+                        file: resultFile,
+                        renderingMode: renderingMode,
+                        downsizeImagesEnabled: downsizeImagesEnabled,
+                        downsizeScaleFactor: downsizeScaleFactor
+                    )
+                }
+                runs.append(contentsOf: resultRuns)
+            }
         }
+
         self.runs = runs
         self.resultFiles = resultFiles
     }

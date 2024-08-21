@@ -41,15 +41,17 @@ func removeUnattachedFiles(runs: [Run]) -> Int {
     func searchFileURLs() throws -> [URL] {
         var urls: [URL] = []
         for run in runs {
-            let topContents = try fileManager.contentsOfDirectory(
-                at: run.file.url,
-                includingPropertiesForKeys: nil
-            )
-            let dataContents = try fileManager.contentsOfDirectory(
-                at: run.file.url.appendingPathComponent("Data"),
-                includingPropertiesForKeys: nil
-            )
-            urls = urls + topContents + dataContents
+            for file in run.files {
+                let topContents = try fileManager.contentsOfDirectory(
+                    at: file.url,
+                    includingPropertiesForKeys: nil
+                )
+                let dataContents = try fileManager.contentsOfDirectory(
+                    at: file.url.appendingPathComponent("Data"),
+                    includingPropertiesForKeys: nil
+                )
+                urls = urls + topContents + dataContents
+            }
         }
         return urls
     }
