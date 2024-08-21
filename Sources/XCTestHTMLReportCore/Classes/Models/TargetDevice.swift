@@ -9,17 +9,24 @@
 import Foundation
 import XCResultKit
 
-struct TargetDevice {
+struct TargetDevice: Hashable, Comparable {
     let identifier: String
     let uniqueIdentifier: String
     let osVersion: String
     let model: String
 
-    init(record: ActionDeviceRecord) {
+    init(record: ActionDeviceRecord, eraseDeviceIds: Bool) {
         Logger.substep("Parsing ActionDeviceRecord")
-        identifier = record.identifier
-        uniqueIdentifier = UUID().uuidString
+        identifier = eraseDeviceIds ? "" : record.identifier
+        uniqueIdentifier = eraseDeviceIds ? "Any" : UUID().uuidString
         osVersion = record.operatingSystemVersion
         model = record.modelName
+    }
+
+    static func <(lhs: TargetDevice, rhs: TargetDevice) -> Bool {
+        lhs.model < rhs.model ||
+        lhs.osVersion < rhs.osVersion ||
+        lhs.identifier < rhs.identifier ||
+        lhs.uniqueIdentifier < rhs.uniqueIdentifier
     }
 }

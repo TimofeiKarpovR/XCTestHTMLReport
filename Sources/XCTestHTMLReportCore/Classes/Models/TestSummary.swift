@@ -46,12 +46,13 @@ struct TestSummary: HTML {
         file: ResultFile,
         renderingMode: Summary.RenderingMode,
         downsizeImagesEnabled: Bool,
-        downsizeScaleFactor: CGFloat
+        downsizeScaleFactor: CGFloat,
+        removeAllTestsGroup: Bool
     ) {
         uuid = UUID().uuidString
         testName = summary.targetName ?? ""
         // TODO: Reduce this with iterations & accum with hashmap
-        tests = summary.tests.map {
+        var tests = summary.tests.map {
             TestGroup(
                 group: $0,
                 resultFile: file,
@@ -60,6 +61,12 @@ struct TestSummary: HTML {
                 downsizeScaleFactor: downsizeScaleFactor
             )
         }
+
+        if removeAllTestsGroup, tests.count == 1, let subGroups = tests[0].subTests as? [TestGroup] {
+            tests = subGroups
+        }
+
+        self.tests = tests
     }
 
     // PRAGMA MARK: - HTML

@@ -10,7 +10,7 @@ import Foundation
 import XCResultKit
 
 struct Run: HTML {
-    let file: ResultFile
+    let files: [ResultFile]
     let runDestination: RunDestination
     let testSummaries: [TestSummary]
     let logContent: RenderingContent
@@ -63,8 +63,8 @@ struct Run: HTML {
         downsizeImagesEnabled: Bool,
         downsizeScaleFactor: CGFloat
     ) {
-        self.file = file
-        runDestination = RunDestination(record: action.runDestination)
+        files = [file]
+        runDestination = RunDestination(record: action.runDestination, eraseDeviceIds: false)
 
         guard
             let testReference = action.actionResult.testsRef,
@@ -103,7 +103,8 @@ struct Run: HTML {
                         file: file,
                         renderingMode: renderingMode,
                         downsizeImagesEnabled: downsizeImagesEnabled,
-                        downsizeScaleFactor: downsizeScaleFactor
+                        downsizeScaleFactor: downsizeScaleFactor,
+                        removeAllTestsGroup: false
                     )
                     queue.sync {
                         summaries.append(summary)
@@ -115,6 +116,64 @@ struct Run: HTML {
         operationQueue.waitUntilAllOperationsAreFinished()
         
         testSummaries = summaries.sorted { $0.testName < $1.testName }        
+    }
+
+    init?(
+        fileWithActions: [(ResultFile, ActionRecord)],
+        renderingMode: Summary.RenderingMode,
+        downsizeImagesEnabled: Bool,
+        downsizeScaleFactor: CGFloat
+    ) {
+        files = fileWithActions.map { $0.0 }
+
+        guard let firstAction = fileWithActions.first?.1 else {
+            Logger.warning("Grouped actions list is empty")
+            return nil
+        }
+
+        runDestination = RunDestination(record: firstAction.runDestination, eraseDeviceIds: true)
+                
+        let cpuCount = ProcessInfo.processInfo.processorCount
+        let operationQueue = OperationQueue()
+        operationQueue.maxConcurrentOperationCount = cpuCount * 2
+        
+        let queue = DispatchQueue(label: "com.xchtmlreport.lock")
+        var summaries = [TestSummary]()
+
+        for (file, action) in fileWithActions {
+            guard
+                let testReference = action.actionResult.testsRef,
+                let testPlanSummaries = file.getTestPlanRunSummaries(id: testReference.id)
+            else {
+                Logger.warning("Can't find test reference for action \(action.title ?? "")")
+                continue
+            }
+            
+            testPlanSummaries.summaries
+                .flatMap(\.testableSummaries)
+                .forEach { testableSummary in
+                    let operation = BlockOperation {
+                        let summary = TestSummary(
+                            summary: testableSummary,
+                            file: file,
+                            renderingMode: renderingMode,
+                            downsizeImagesEnabled: downsizeImagesEnabled,
+                            downsizeScaleFactor: downsizeScaleFactor,
+                            removeAllTestsGroup: true
+                        )
+                        queue.sync {
+                            summaries.append(summary)
+                        }
+                    }
+                    operationQueue.addOperation(operation)
+                }
+        }
+        
+        operationQueue.waitUntilAllOperationsAreFinished()
+        
+        testSummaries = summaries.sorted { $0.testName < $1.testName }        
+        // TODO: handle logs for grouped runs
+        logContent = .none
     }
 
     private var logSource: String? {
